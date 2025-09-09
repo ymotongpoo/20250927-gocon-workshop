@@ -29,6 +29,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime/pprof"
 )
 
 var (
@@ -52,6 +53,12 @@ func main() {
 		log.Fatalf("Could not open file %q: %v", flag.Arg(0), err)
 	}
 	defer f.Close()
+
+	// create pprof report to record
+	report, _ := os.Create("cpu.prof")
+	defer report.Close()
+	_ = pprof.StartCPUProfile(report)
+	defer pprof.StopCPUProfile()
 
 	infield := false
 	pos := field - 1
