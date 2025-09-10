@@ -24,6 +24,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -55,51 +57,30 @@ func main() {
 	defer f.Close()
 
 	// create pprof report to record
-	report, _ := os.Create("cpu.prof")
+	report, _ := os.Create("cpu.prof.2")
 	defer report.Close()
 	_ = pprof.StartCPUProfile(report)
 	defer pprof.StopCPUProfile()
 
-	infield := false
-	pos := field - 1
-	s := []byte{}
+	r := bufio.NewReader(f)
+
 	for {
+		// syscall.read が多すぎるので、その回数を減らすために1行ごと読み込むことにした
+		line, err := r.ReadBytes('\n')
 		// ファイルからの読み込みが出来ない場合やファイル末尾の場合は終了する
-		var buf [1]byte
-		_, err := f.Read(buf[:])
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			log.Fatalf("Could not read file %q properly: %v", flag.Arg(0), err)
 		}
-
-		// 1文字ずつ走査していく前提で状態として
-		// * 行内/行末
-		// * ターゲットのフィールド内外
-		// * デリミタ
-		// が考えられるので、その有限状態を管理する
-		c := buf[0]
-		if pos == 0 {
-			infield = true
-		}
-		if c == delimiter {
-			if pos > 0 && !infield {
-				pos--
-			} else if pos == 0 && infield {
-				pos--
-				infield = false
-			}
-			continue
-		}
-		if c == '\n' {
-			infield = false
-			pos = field - 1
-			fmt.Println(string(s))
-			s = []byte{}
-		}
-		if infield {
-			s = append(s, c)
-		}
+		// bytes.SplitNは標準パッケージで十分テストされているので速いと考える。
+		// ただし []byte(",") は毎回変換されているのでコストがかかっていないか
+		// よく確認した方が良い
+		fields := bytes.SplitN(line, []byte{delimiter}, field+1)
+		// ここもまだ効率が悪いけど、残しておく
+		// - 1行ごとにflushしてるので効率が悪い
+		// - stringに変換してるのも効率が悪い
+		fmt.Println(string(fields[field-1]))
 	}
 }
